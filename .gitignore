@@ -4,10 +4,14 @@ session_data
 
 # docs
 /docs
+/build
+/dist
+/.idea
 
 # virtualenv
 /env
 /env2
+/venv
 
 # IDE files
 *.sublime-*

@@ -5,25 +5,54 @@ from fhirclient import client
 from fhirclient.models.medication import Medication
 from fhirclient.models.medicationrequest import MedicationRequest
 
-from flask import Flask, request, redirect, session
+from flask import Flask, request, redirect, session, render_template
+# from flask import Flask, render_template, redirect, url_for
+from flask_bootstrap import Bootstrap
+from flask_wtf import FlaskForm
+from wtforms import StringField, SubmitField
+from wtforms.validators import DataRequired
 
 # app setup
 smart_defaults = {
     'app_id': 'my_web_app',
-    'api_base': 'https://sb-fhir-stu3.smarthealthit.org/smartstu3/data',
+    # 'api_base': 'https://fhir-open-api-dstu2.smarthealthit.org',
+    # 'api_base': 'https://sb-fhir-stu3.smarthealthit.org/smartstu3/data',
+    # 'api_base': 'http://test.fhir.org/r4/',
+    # 'api_base': 'https://fhir-open.cerner.com/dstu2/ec2458f2-1e24-41c8-b71b-0e701af7583d',
+    'api_base': 'https://fhir-open.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d',
+    # 'api_base': 'https://fhir-open.cerner.com/dstu2',
+    # 'api_base': 'https://r4.smarthealthit.org',
+    # 'api_base': 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/DSTU2',
     'redirect_uri': 'http://localhost:8000/fhir-app/',
 }
 
 app = Flask(__name__)
 
+# Flask-WTF requires an encryption key - the string can be anything
+app.config['SECRET_KEY'] = 'C2HWGVoMGfNTBsrYQg8EcMrdTimkZfAb'
+
+# Flask-Bootstrap requires this line
+Bootstrap(app)
+
+
 def _save_state(state):
     session['state'] = state
 
 def _get_smart():
+
     state = session.get('state')
     if state:
         return client.FHIRClient(state=state, save_func=_save_state)
     else:
+        smart = client.FHIRClient(settings=smart_defaults)
+
+        import fhirclient.models.patient as p
+        patient = p.Patient.read('12724067', smart.server)
+        patient.birthDate.isostring
+        # '1963-06-12'
+        smart.human_name(patient.name[0])
+        # 'Christy Ebert'
+
         return client.FHIRClient(settings=smart_defaults, save_func=_save_state)
 
 def _logout():
@@ -65,35 +94,123 @@ def _get_med_name(prescription, client=None):
     else:
         return 'Error: medication not found'
 
+
+class NameForm(FlaskForm):
+    name = StringField('Enter the family name of the patient to search for (max 25 results):', validators=[DataRequired()])
+    submit = SubmitField('Find')
+
+
 # views
 
-@app.route('/')
-@app.route('/index.html')
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    """ The app's main page.
-    """
-    smart = _get_smart()
-    body = "<h1>Hello</h1>"
-    
-    if smart.ready and smart.patient is not None:       # "ready" may be true but the access token may have expired, making smart.patient = None
-        name = smart.human_name(smart.patient.name[0] if smart.patient.name and len(smart.patient.name) > 0 else 'Unknown')
-        
-        # generate simple body text
-        body += "<p>You are authorized and ready to make API requests for <em>{0}</em>.</p>".format(name)
-        pres = _get_prescriptions(smart)
-        if pres is not None:
-            body += "<p>{0} prescriptions: <ul><li>{1}</li></ul></p>".format("His" if 'male' == smart.patient.gender else "Her", '</li><li>'.join([_get_med_name(p,smart) for p in pres]))
-        else:
-            body += "<p>(There are no prescriptions for {0})</p>".format("him" if 'male' == smart.patient.gender else "her")
-        body += """<p><a href="/logout">Change patient</a></p>"""
-    else:
-        auth_url = smart.authorize_url
-        if auth_url is not None:
-            body += """<p>Please <a href="{0}">authorize</a>.</p>""".format(auth_url)
-        else:
-            body += """<p>Running against a no-auth server, nothing to demo here. """
-        body += """<p><a href="/reset" style="font-size:small;">Reset</a></p>"""
-    return body
+    # names = get_names(ACTORS)
+    names = ['Ken', 'Ella']
+    # you must tell the variable 'form' what you named the class, above
+    # 'form' is the variable name used in this template: index.html
+
+    form = NameForm()
+    body = "<br><h2>Results success!</h2><br>"
+    # return body
+    # return render_template('index.html', names=names, form=form, body=body)
+    if form.validate_on_submit():
+        name = form.name.data
+
+        smart = client.FHIRClient(settings=smart_defaults)
+        import fhirclient.models.patient as p
+        # import fhirclient.models.condition as condition
+
+        search = p.Patient.where(struct={'_count': bytes('100', 'utf-8'), 'family': name})
+        # search = p.Patient.where(struct={'family': name})
+        patients = search.perform_resources(smart.server)
+        # print(patients)
+        cur_id_patient = 1
+        for patient_this in patients:
+            patient_id = patient_this.id.encode('ascii', 'ignore')
+            birth_date = "None"
+            if patient_this.birthDate is not None:
+                birth_date = patient_this.birthDate.isostring
+            name = smart.human_name(patient_this.name[0])
+            details = "<p>Patient details #{}<ul><li>ID: {}</li><li>Full Name: {}</li><li>Birth date: {}</li></ul>".format(
+                cur_id_patient, patient_id, name, birth_date)
+            print(details)
+            body += details
+            cur_id_patient += 1
+
+        # if name.lower() in names:
+        #     # empty the form field
+        #     form.name.data = ""
+        #     # id = get_id(ACTORS, name)
+        #     # # redirect the browser to another route and template
+        #     # return redirect( url_for('actor', id=id) )
+        # else:
+        #     body += "That actor is not in our database."
+    return render_template('index.html', names=names, form=form, body=body)
+
+#
+# @app.route('/')
+# @app.route('/index.html')
+# def index():
+#     body = "<h1>Hello</h1>"
+#     smart = client.FHIRClient(settings=smart_defaults)
+#
+#     import fhirclient.models.patient as p
+#     patient = p.Patient.read('12724067', smart.server)
+#
+#     patient_id = patient.id.encode('ascii', 'ignore')
+#     birth_date = patient.birthDate.isostring
+#     name = smart.human_name(patient.name[0])
+#     details = "<p>Patient details<ul><li>ID: {}</li><li>Full Name: {}</li><li>Birth date: {}</li></ul>".format(patient_id, name, birth_date)
+#     print(details)
+#
+#     body += details
+#
+#     search = p.Patient.where(struct={'_count': '23', 'family': 'Smith'})
+#     # search = p.Patient.where(struct={'family': 'Smith', 'gender': 'female'})
+#     patients = search.perform_resources(smart.server)
+#     # print(patients)
+#     cur_id_patient = 1
+#     for patient_this in patients:
+#         patient_id = patient_this.id.encode('ascii', 'ignore')
+#         birth_date = "None"
+#         if patient_this.birthDate is not None:
+#             birth_date = patient_this.birthDate.isostring
+#         name = smart.human_name(patient_this.name[0])
+#         details = "<p>Patient details #{}<ul><li>ID: {}</li><li>Full Name: {}</li><li>Birth date: {}</li></ul>".format(cur_id_patient, patient_id, name, birth_date)
+#         print(details)
+#         body += details
+#         cur_id_patient += 1
+
+    # import fhirclient.models.procedure as p
+    # search = p.Procedure.where(struct={'subject': 'f001', 'status': 'completed'})
+    # procedures = search.perform_resources(smart.server)
+    # for procedure in procedures:
+    #     body += "<p>Procedure details<ul><li>Full Name: " + name + "</li><li>Birth date: " + birth_date + "</li></ul>"
+    #
+    # """ The app's main page.
+    # """
+    # smart = _get_smart()
+    # body = "<h1>Hello</h1>"
+    #
+    # if smart.ready and smart.patient is not None:       # "ready" may be true but the access token may have expired, making smart.patient = None
+    #     name = smart.human_name(smart.patient.name[0] if smart.patient.name and len(smart.patient.name) > 0 else 'Unknown')
+    #
+    #     # generate simple body text
+    #     body += "<p>You are authorized and ready to make API requests for <em>{0}</em>.</p>".format(name)
+    #     pres = _get_prescriptions(smart)
+    #     if pres is not None:
+    #         body += "<p>{0} prescriptions: <ul><li>{1}</li></ul></p>".format("His" if 'male' == smart.patient.gender else "Her", '</li><li>'.join([_get_med_name(p,smart) for p in pres]))
+    #     else:
+    #         body += "<p>(There are no prescriptions for {0})</p>".format("him" if 'male' == smart.patient.gender else "her")
+    #     body += """<p><a href="/logout">Change patient</a></p>"""
+    # else:
+    #     auth_url = smart.authorize_url
+    #     if auth_url is not None:
+    #         body += """<p>Please <a href="{0}">authorize</a>.</p>""".format(auth_url)
+    #     else:
+    #         body += """<p>Running against a no-auth server, nothing to demo here. """
+    #     body += """<p><a href="/reset" style="font-size:small;">Reset</a></p>"""
+# return body
 
 
 @app.route('/fhir-app/')
@@ -122,8 +239,8 @@ def reset():
 
 # start the app
 if '__main__' == __name__:
-    import flaskbeaker
-    flaskbeaker.FlaskBeaker.setup_app(app)
+    # import flaskbeaker
+    # flaskbeaker.FlaskBeaker.setup_app(app)
     
     logging.basicConfig(level=logging.DEBUG)
     app.run(debug=True, port=8000)
