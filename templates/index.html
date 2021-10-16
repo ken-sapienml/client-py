@@ -35,41 +35,75 @@ SapienML - FHIR Python demo app
 <!--    </ul>-->
 <!--  </div>-->
 <!--</nav>-->
-<!-- Trigger the modal with a button -->
-<button type="button" class="btn btn-info btn-lg" data-toggle="modal" data-target="#myModal">Open Modal</button>
 
-<!-- Modal -->
-<div id="myModal" class="modal fade" role="dialog">
-  <div class="modal-dialog">
-
-    <!-- Modal content-->
-    <div class="modal-content">
-      <div class="modal-header">
-        <button type="button" class="close" data-dismiss="modal">&times;</button>
-        <h4 class="modal-title">Modal Header</h4>
-      </div>
-      <div class="modal-body">
-        <p>Some text in the modal.</p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-      </div>
-    </div>
-
-  </div>
-</div>
 <div class="container">
   <div class="row">
     <div class="col-md-10 col-lg-8 mx-lg-auto mx-md-auto">
 
-      <h1 class="pt-5 pb-2">Welcome to the FHIR demo app!</h1>
-
-      <p class="lead">This is the index page for an example Flask app using Bootstrap and WTForms.  Connection to Cerner FHIR R4 server (sandbox)</p>
-
+      <h1 class="pt-5 pb-2">Welcome to the SapienML FHIR Python demo app!</h1>
+      <p>
+      <ul>
+        <li>Connection to Cerner FHIR R4 server (OPEN sandbox)</li>
+        <ul>
+          <li><a href="https://fhir-open.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d">https://fhir-open.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d</a></li>
+          <li>OAUTH2 support can be added later easily - support is there in fhirclient and Cerner OAUTH2 sandbox</li>
+        </ul>
+        <li>fhirclient (aka client.py) a flexible Python client for FHIR servers supporting the 'SMART on FHIR' protocol (OAUTH2)</li>
+        <ul>
+          <li>Technical documentation is available at <a href="docs.smarthealthit.org/client-py/">docs.smarthealthit.org/client-py</a></li>
+        </ul>
+        <li> Flask app using Bootstrap and WTForms</li>
+      </ul>
+      </p>
+      <br>
+      <b>Enter the family name of the patient to search for (max 25 results):</b>
+      <ul>
+          <li><b>Search can take 30s or more</b> as we the sandbox server is slow and we are retrieving all 'Condition' records for each patient (inefficient but good for demo purposes)</li>
+          <li><b>Search examples:</b></li>
+          <ul>
+            <li>Multiple patients with diff conditions: <b>MOXE, BOUR, mcgHealth</b></li>
+            <li>LOTS of conditions (379 for one patient!): <b>modifieded</b></li>
+            <li>LOTS of patients and conditions (30s search): <b>smith</b></li>
+            <li>NO conditions: <b>young</b></li>
+          </ul>
+      </ul>
       {{ wtf.quick_form(form) }}
 
+      <br>
         <!--        will work, but also opens up the door for an attacker to inject malicious HTML or Javascript into your page, also known an an XSS attack. More info here if you're interested.-->
-        {{ body|safe }}
+<!--        {{ body|safe }}-->
+        {%for i in range(0, len_patients)%}
+          <p>Patient details #{{i+1}}<ul><li>ID: {{patients[i].patient_id}}</li><li>Full Name: {{patients[i].name}}</li><li>Birth date: {{patients[i].birth_date}}</li></ul>
+          <!--          <li>{{ member }}</li>-->
+          <!-- Trigger the modal with a button -->
+          <button type="button" class="btn btn-info btn-lg" data-toggle="modal" data-target="#{{patients[i].patient_id}}">{{patients[i].len_conditions}} Conditions</button>
+      <br>
+      <br>
+
+        <!-- Modal -->
+        <div id="{{patients[i].patient_id}}" class="modal fade" role="dialog">
+          <div class="modal-dialog">
+
+            <!-- Modal content-->
+            <div class="modal-content">
+              <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Conditions</h4>
+              </div>
+              <div class="modal-body">
+                <p>Conditions:</p>
+                {%for condition in patients[i].conditions%}
+                  <p><ul><li>ID: {{condition.id}}</li><li>Condition: {{condition.name}}</li><li>Recorded date: {{condition.recordedDate}}</li></ul>
+                {% endfor %}
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+	    {% endfor %}
 
 <!--      <p class="pt-5"><strong>{{ body }}</strong></p>-->
 

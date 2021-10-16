@@ -96,8 +96,22 @@ def _get_med_name(prescription, client=None):
 
 
 class NameForm(FlaskForm):
-    name = StringField('Enter the family name of the patient to search for (max 25 results):', validators=[DataRequired()])
+    name = StringField('', validators=[DataRequired()])
     submit = SubmitField('Find')
+
+class Patient:
+    def __init__(self, patient_id, name, birth_date, conditions):
+        self.patient_id = patient_id
+        self.name = name
+        self.birth_date = birth_date
+        self.conditions = conditions
+        self.len_conditions = len(conditions)
+
+class Condition:
+    def __init__(self, id, name, recordedDate):
+        self.id = id
+        self.name = name
+        self.recordedDate = recordedDate
 
 
 # views
@@ -115,10 +129,10 @@ def index():
     # return render_template('index.html', names=names, form=form, body=body)
     if form.validate_on_submit():
         name = form.name.data
+        patients_template = []
 
         smart = client.FHIRClient(settings=smart_defaults)
         import fhirclient.models.patient as p
-        # import fhirclient.models.condition as condition
 
         search = p.Patient.where(struct={'_count': bytes('100', 'utf-8'), 'family': name})
         # search = p.Patient.where(struct={'family': name})
@@ -127,6 +141,21 @@ def index():
         cur_id_patient = 1
         for patient_this in patients:
             patient_id = patient_this.id.encode('ascii', 'ignore')
+            import fhirclient.models.condition as condition
+            search_condition = condition.Condition.where(struct={'patient': patient_id})
+            # search_condition = condition.Condition.where(struct={'patient': '12724067'})
+            conditions = search_condition.perform_resources(smart.server)
+            print(conditions)
+            conditions_template = []
+            for condition_this in conditions:
+                condition_id = condition_this.id.encode('ascii', 'ignore')
+                recordedDate = "None"
+                if condition_this.recordedDate is not None:
+                    recordedDate = condition_this.recordedDate.isostring
+                name = condition_this.code.text
+                # print(recordedDate)
+                conditions_template.append(Condition(condition_id, name, recordedDate))
+
             birth_date = "None"
             if patient_this.birthDate is not None:
                 birth_date = patient_this.birthDate.isostring
@@ -135,6 +164,8 @@ def index():
                 cur_id_patient, patient_id, name, birth_date)
             print(details)
             body += details
+
+            patients_template.append(Patient(patient_id, name, birth_date, conditions_template))
             cur_id_patient += 1
 
         # if name.lower() in names:
@@ -145,7 +176,11 @@ def index():
         #     # return redirect( url_for('actor', id=id) )
         # else:
         #     body += "That actor is not in our database."
-    return render_template('index.html', names=names, form=form, body=body)
+        return render_template('index.html', names=names, form=form,
+                               patients=patients_template, len_patients=len(patients_template))
+    else:
+        return render_template('index.html', names=names, form=form,
+                               patients=[], len_patients=0)
 
 #
 # @app.route('/')
@@ -243,4 +278,7 @@ if '__main__' == __name__:
     # flaskbeaker.FlaskBeaker.setup_app(app)
     
     logging.basicConfig(level=logging.DEBUG)
+
+    # replit.com
+    # app.run(host='0.0.0.0', port=8080)
     app.run(debug=True, port=8000)
